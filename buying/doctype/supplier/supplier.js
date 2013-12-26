@@ -29,7 +29,7 @@ cur_frm.cscript.make_dashboard = function(doc) {
 	if(doc.__islocal) 
 		return;
 	if (in_list(user_roles, "Accounts User") || in_list(user_roles, "Accounts Manager"))
-		cur_frm.dashboard.set_headline('<span class="text-muted">Loading...</span>')
+		cur_frm.dashboard.set_headline('<span class="text-muted">' + wn._('Loading') + '...</span>')
 	
 	cur_frm.dashboard.add_doctype_badge("Supplier Quotation", "supplier");
 	cur_frm.dashboard.add_doctype_badge("Purchase Order", "supplier");

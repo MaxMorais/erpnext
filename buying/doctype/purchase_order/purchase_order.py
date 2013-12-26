@@ -131,7 +131,7 @@ class DocType(BuyingController):
 		date_diff = webnotes.conn.sql("select TIMEDIFF('%s', '%s')" % ( mod_db[0][0],cstr(self.doc.modified)))
 		
 		if date_diff and date_diff[0][0]:
-			msgprint(cstr(self.doc.doctype) +" => "+ cstr(self.doc.name) +" has been modified. Please Refresh. ")
+			msgprint(_("%(doctype)s => %(docname)s has been modified. Please Refresh.") % dict(doctype=cstr(self.doc.doctype), docname=cstr(self.doc.name)))
 			raise Exception
 
 	def update_status(self, status):
@@ -143,7 +143,8 @@ class DocType(BuyingController):
 		self.update_bin(is_submit = (status == 'Submitted') and 1 or 0, is_stopped = 1)
 
 		# step 3:=> Acknowledge user
-		msgprint(self.doc.doctype + ": " + self.doc.name + " has been %s." % ((status == 'Submitted') and 'Unstopped' or cstr(status)))
+		msgprint(_("%(doctype)s: %(docname)s has been %(status)s.") % 
+			dict(doctype=self.doc.doctype, docname=self.doc.name, status=((status == 'Submitted') and 'Unstopped' or cstr(status))))
 
 	def on_submit(self):
 		purchase_controller = webnotes.get_obj("Purchase Common")
@@ -168,7 +169,7 @@ class DocType(BuyingController):
 		# Check if Purchase Invoice has been submitted against current Purchase Order
 		submitted = webnotes.conn.sql("select t1.name from `tabPurchase Invoice` t1,`tabPurchase Invoice Item` t2 where t1.name = t2.parent and t2.purchase_order = '%s' and t1.docstatus = 1" % self.doc.name)
 		if submitted:
-			msgprint("Purchase Invoice : " + cstr(submitted[0][0]) + " has already been submitted !")
+			msgprint(_("Purchase Invoice : %(purchase_invoice)s has already been submitted!") % dict(purchase_invoice=cstr(submitted[0][0])))
 			raise Exception
 
 		webnotes.conn.set(self.doc,'status','Cancelled')

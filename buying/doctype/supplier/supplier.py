@@ -56,7 +56,7 @@ class DocType(TransactionBase):
 		g = webnotes.conn.sql("select payables_group from tabCompany where name=%s", self.doc.company)
 		g = g and g[0][0] or ''
 		if not g:
-			msgprint("Update Company master, assign a default group for Payables")
+			msgprint(_("Update Company master, assign a default group for Payables"))
 			raise Exception
 		return g
 
@@ -93,7 +93,7 @@ class DocType(TransactionBase):
 		#validation for Naming Series mandatory field...
 		if webnotes.defaults.get_global_default('supp_master_name') == 'Naming Series':
 			if not self.doc.naming_series:
-				msgprint("Series is Mandatory.", raise_exception=1)
+				msgprint(_("Series is Mandatory."), raise_exception=1)
 	
 	def create_account_head(self):
 		if self.doc.company :
@@ -120,7 +120,7 @@ class DocType(TransactionBase):
 			else:
 				self.check_parent_account(parent_account, abbr)
 		else : 
-			msgprint("Please select Company under which you want to create account head")
+			msgprint(_("Please select Company under which you want to create account head"))
 	
 	def check_parent_account(self, parent_account, abbr):
 		if webnotes.conn.get_value("Account", self.doc.name + " - " + abbr, 
@@ -179,7 +179,7 @@ class DocType(TransactionBase):
 @webnotes.whitelist()
 def get_dashboard_info(supplier):
 	if not webnotes.has_permission("Supplier", "read", supplier):
-		webnotes.msgprint("No Permission", raise_exception=True)
+		webnotes.msgprint(_("No Permission"), raise_exception=True)
 	
 	out = {}
 	for doctype in ["Supplier Quotation", "Purchase Order", "Purchase Receipt", "Purchase Invoice"]:

@@ -36,8 +36,7 @@ class DocType(BuyingController):
 				if flt(d.conversion_factor):
 					last_purchase_rate = flt(d.purchase_rate) / flt(d.conversion_factor)
 				else:
-					webnotes.throw(_("Row ") + cstr(d.idx) + ": " + 
-						_("UOM Conversion Factor is mandatory"))
+					webnotes.throw(_("Row #%(row_id)s: UOM Conversion Factor is mandatory") % dict(row_id=cstr(d.idx)))
 
 			# update last purchsae rate
 			if last_purchase_rate:
@@ -97,11 +96,11 @@ class DocType(BuyingController):
 			
 			# validate stock item
 			if item[0][0]=='Yes' and d.qty and not d.warehouse:
-				webnotes.throw("Warehouse is mandatory for %s, since it is a stock item" % d.item_code)
+				webnotes.throw(_("Warehouse is mandatory for %(item_code)s, since it is a stock item") % dict(item_code=d.item_code))
 			
 			# validate purchase item
 			if item[0][1] != 'Yes' and item[0][2] != 'Yes':
-				webnotes.throw("Item %s is not a purchase item or sub-contracted item. Please check" % (d.item_code))
+				webnotes.throw(_("Item %(item_code)s is not a purchase item or sub-contracted item. Please check") % dict(item_code=d.item_code))
 			
 			# list criteria that should not repeat if item is stock item
 			e = [d.schedule_date, d.item_code, d.description, d.warehouse, d.uom, 
@@ -117,16 +116,16 @@ class DocType(BuyingController):
 			if ch and ch[0][0] == 'Yes':	
 				# check for same items
 				if e in check_list:
-					webnotes.throw("""Item %s has been entered more than once with same description, schedule date, warehouse and uom.\n 
-						Please change any of the field value to enter the item twice""" % d.item_code)
+					webnotes.throw(_("""Item %(item_code)s has been entered more than once with same description, schedule date, warehouse and uom.\n 
+						Please change any of the field value to enter the item twice""") % dict(item_code=d.item_code))
 				else:
 					check_list.append(e)
 					
 			elif ch and ch[0][0] == 'No':
 				# check for same items
 				if f in chk_dupl_itm:
-					webnotes.throw("""Item %s has been entered more than once with same description, schedule date.\n 
-						Please change any of the field value to enter the item twice.""" % d.item_code)
+					webnotes.throw(_("""Item %items has been entered more than once with same description, schedule date.\n 
+						Please change any of the field value to enter the item twice.""") % dict(item_code=d.item_code))
 				else:
 					chk_dupl_itm.append(f)
 					
@@ -155,8 +154,8 @@ class DocType(BuyingController):
 		stopped = webnotes.conn.sql("""select name from `tab%s` where name = %s and 
 			status = 'Stopped'""" % (doctype, '%s'), docname)
 		if stopped:
-			webnotes.throw("One cannot do any transaction against %s : %s, it's status is 'Stopped'" % 
-				(doctype, docname))
+			webnotes.throw(_("One cannot do any transaction against %(doctype)s : %(docname)s, it's status is 'Stopped'") % 
+				dict(doctype=doctype, docname=docname))
 	
 	def check_docstatus(self, check, doctype, docname, detail_doctype = ''):
 		if check == 'Next':
@@ -164,11 +163,10 @@ class DocType(BuyingController):
 				where t1.name = t2.parent and t2.prevdoc_docname = %s and t1.docstatus = 1""" 
 				% (doctype, detail_doctype, '%s'), docname)
 			if submitted:
-				webnotes.throw(cstr(doctype) + ": " + cstr(submitted[0][0]) 
-					+ _("has already been submitted."))
+				webnotes.throw(_("%(doctype)s: %(docname)s has already submitted.") %dict(doctype=cstr(doctype) , docname=submitted[0][0]))
 
 		if check == 'Previous':
 			submitted = webnotes.conn.sql("""select name from `tab%s` 
 				where docstatus = 1 and name = %s""" % (doctype, '%s'), docname)
 			if not submitted:
-				webnotes.throw(cstr(doctype) + ": " + cstr(submitted[0][0]) + _("not submitted"))
+				webnotes.throw(_("%(doctype)s: %(docname)s not submitted.") % dict(doctype=cstr(doctype), docname=cstr(submitted[0][0])))
