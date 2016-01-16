@@ -15,4 +15,4 @@ It is to be decided at what point it will be serious, big, good enough to do a P
 
 **Equals** (in Filter to filter list items) - will Filter the exact term which is put in. (i.e. Filter term 'SINV-0001' will find one specific Sales Invoice (SINV-0001). Neither 'SINV' nor 'SIN*' will find any Sales Invoice (SINV-xxxxx). 'Equals' is not case sensitive
 
-**Filter** - [add definition here]
+**Filter** - is a condition or rule to limit the result of a query, a link field, etc.
