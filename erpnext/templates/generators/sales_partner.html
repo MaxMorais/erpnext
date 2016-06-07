@@ -1,18 +1,20 @@
+{% extends "templates/web.html" %}
+
 {% block title %} {{ title }} {% endblock %}
 
 {% block header %}<h2>{{ title }}</h2>{% endblock %}
 
-{% block content %}
+{% block page_content %}
 <div class="partner-content" itemscope itemtype="http://schema.org/Organization">
 	<div class="row">
 		<div class="col-md-4">
 			{% if logo -%}
-			<img itemprop="brand" src="{{ logo }}" class="partner-logo" 
+			<img itemprop="brand" src="{{ logo }}" class="partner-logo"
 				alt="{{ partner_name }}" title="{{ partner_name }}" />
 			<br><br>
 			{%- endif %}
 			<address>
-				{% if partner_website -%}<p><a href="{{ partner_website }}" 
+				{% if partner_website -%}<p><a href="{{ partner_website }}"
 					target="_blank">{{ partner_website }}</a></p>{%- endif %}
 				{% if partner_address -%}<p itemprop="address">{{ partner_address }}</p>{%- endif %}
 				{% if phone -%}<p itemprop="telephone">{{ phone }}</p>{%- endif %}
@@ -25,5 +27,3 @@
 	</div>
 </div>
 {% endblock %}
-
-{% block sidebar %}{% include "templates/includes/sidebar.html" %}{% endblock %}

@@ -1,9 +1,7 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
-cur_frm.cscript.tname = "Installation Note Item";
-cur_frm.cscript.fname = "installed_item_details";
-
+frappe.require("assets/erpnext/js/utils.js");
 
 frappe.ui.form.on_change("Installation Note", "customer",
 	function(frm) { erpnext.utils.get_party_details(frm); });
@@ -56,7 +54,7 @@ erpnext.selling.InstallationNote = frappe.ui.form.Controller.extend({
 						source_doctype: "Delivery Note",
 						get_query_filters: {
 							docstatus: 1,
-							status: ["!=", "Stopped"],
+							status: ["not in", ["Stopped", "Closed"]],
 							per_installed: ["<", 99.99],
 							customer: cur_frm.doc.customer || undefined,
 							company: cur_frm.doc.company

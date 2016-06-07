@@ -4,19 +4,47 @@ from frappe import _
 def get_data():
 	return [
 		{
-			"label": _("Documents"),
+			"label": _("Production"),
 			"icon": "icon-star",
+			"items": [
+				{
+					"type": "doctype",
+					"name": "Production Order",
+					"description": _("Orders released for production."),
+				},
+				{
+					"type": "doctype",
+					"name": "Production Planning Tool",
+					"description": _("Generate Material Requests (MRP) and Production Orders."),
+				},
+				{
+					"type": "doctype",
+					"name": "Stock Entry",
+				},
+				{
+					"type": "doctype",
+					"name": "Time Log",
+					"description": _("Time Logs for manufacturing."),
+				},
+
+			]
+		},
+		{
+			"label": _("Bill of Materials"),
 			"items": [
 				{
 					"type": "doctype",
 					"name": "BOM",
 					"description": _("Bill of Materials (BOM)"),
-					"label": _("Bill of Material")
+					"label": _("Bill of Materials")
 				},
 				{
-					"type": "doctype",
-					"name": "Production Order",
-					"description": _("Orders released for production."),
+					"type": "page",
+					"name": "bom-browser",
+					"icon": "icon-sitemap",
+					"label": _("BOM Browser"),
+					"description": _("Tree of Bill of Materials"),
+					"doctype": "BOM"
 				},
 				{
 					"type": "doctype",
@@ -26,7 +54,12 @@ def get_data():
 				{
 					"type": "doctype",
 					"name": "Workstation",
-					"description": _("Where manufacturing operations are carried out."),
+					"description": _("Where manufacturing operations are carried."),
+				},
+				{
+					"type": "doctype",
+					"name": "Operation",
+					"description": _("Details of the operations carried out."),
 				},
 
 			]
@@ -37,18 +70,23 @@ def get_data():
 			"items": [
 				{
 					"type": "doctype",
-					"name": "Production Planning Tool",
-					"description": _("Generate Material Requests (MRP) and Production Orders."),
-				},
-				{
-					"type": "doctype",
 					"name": "BOM Replace Tool",
 					"description": _("Replace Item / BOM in all BOMs"),
 				},
 			]
 		},
 		{
-			"label": _("Standard Reports"),
+			"label": _("Setup"),
+			"items": [
+				{
+					"type": "doctype",
+					"name": "Manufacturing Settings",
+					"description": _("Global settings for all manufacturing processes."),
+				}
+			]
+		},
+		{
+			"label": _("Reports"),
 			"icon": "icon-list",
 			"items": [
 				{
@@ -75,6 +113,33 @@ def get_data():
 					"name": "Completed Production Orders",
 					"doctype": "Production Order"
 				},
+				{
+					"type": "report",
+					"is_query_report": True,
+					"name": "BOM Search",
+					"doctype": "BOM"
+				},
 			]
 		},
+		{
+			"label": _("Help"),
+			"icon": "icon-facetime-video",
+			"items": [
+				{
+					"type": "help",
+					"label": _("Bill of Materials"),
+					"youtube_id": "hDV0c1OeWLo"
+				},
+				{
+					"type": "help",
+					"label": _("Production Planning Tool"),
+					"youtube_id": "CzatSl4zJ2Y"
+				},
+				{
+					"type": "help",
+					"label": _("Production Order"),
+					"youtube_id": "ZotgLyp2YFY"
+				},
+			]
+		}
 	]

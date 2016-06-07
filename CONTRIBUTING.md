@@ -1,8 +1,8 @@
 # Contributing to Frappe / ERPNext
 
-### Update 16-Sep-14
+## Questions
 
-Please send pull requests to branch v5.0
+If you have questions on how to use ERPNext or want help in customization or debugging of your scripts, please post on https://discuss.erpnext.com. This is only for bug reports and feature requests.
 
 ## Reporting issues
 
@@ -17,6 +17,7 @@ We only accept issues that are bug reports or feature requests. Bugs must be iso
 1. **Share as much information as possible:** Include operating system and version, browser and version, when did you last update ERPNext, how is it customized, etc. where appropriate. Also include steps to reproduce the bug.
 1. **Include Screenshots if possible:** Consider adding screenshots annotated with what goes wrong.
 1. **Find and post the trace for bugs:** If you are reporting an issue from the browser, Open the Javascript Console and paste us any error messages you see.
+1. **Security Issues:** If you are reporting a security issue, please send a private email to <info@frappe.io>.
 
 
 ### Feature Requests
@@ -48,6 +49,20 @@ DocTypes are easy to create but hard to maintain. If you find that there is a an
 
 Tabs!
 
+#### Release Checklist
+
+- Describe, in detail, what is in the pull request
+- How to use the new feature?
+- Test cases
+- Change log
+- Manual Pull Request Link
+- Screencast. Should include:
+	- New Forms
+	- Linked Forms
+	- Linked Reports
+	- Print Views
+
 ### Copyright
 
 Please see README.md
+

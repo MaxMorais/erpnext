@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -10,5 +10,4 @@ def execute(filters=None):
 	data = []
 	conditions = get_columns(filters, "Sales Order")
 	data = get_data(filters, conditions)
-	
-	return conditions["columns"], data 
+	return conditions["columns"], data

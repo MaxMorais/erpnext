@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -35,7 +35,7 @@ class PackingSlip(Document):
 			frappe.throw(_("Delivery Note {0} must not be submitted").format(self.delivery_note))
 
 	def validate_items_mandatory(self):
-		rows = [d.item_code for d in self.get("item_details")]
+		rows = [d.item_code for d in self.get("items")]
 		if not rows:
 			frappe.msgprint(_("No Items to pack"), raise_exception=1)
 
@@ -65,9 +65,7 @@ class PackingSlip(Document):
 			frappe.throw(_("""Case No(s) already in use. Try from Case No {0}""").format(self.get_recommended_case_no()))
 
 	def validate_qty(self):
-		"""
-			Check packed qty across packing slips and delivery note
-		"""
+		"""Check packed qty across packing slips and delivery note"""
 		# Get Delivery Note Items, Item Quantity Dict and No. of Cases for this Packing slip
 		dn_details, ps_item_qty, no_of_cases = self.get_details_for_packing()
 
@@ -86,25 +84,32 @@ class PackingSlip(Document):
 			* No. of Cases of this packing slip
 		"""
 
-		rows = [d.item_code for d in self.get("item_details")]
+		# also pick custom fields from delivery note
+		rows = [d.item_code for d in self.get("items")]
+
+		custom_fields = ', '.join(['dni.`{0}`'.format(d.fieldname) for d in \
+			frappe.get_meta("Delivery Note Item").get_custom_fields()])
+
+		if custom_fields:
+			custom_fields = ', ' + custom_fields
 
 		condition = ""
 		if rows:
 			condition = " and item_code in (%s)" % (", ".join(["%s"]*len(rows)))
 
 		# gets item code, qty per item code, latest packed qty per item code and stock uom
-		res = frappe.db.sql("""select item_code, ifnull(sum(qty), 0) as qty,
-			(select sum(ifnull(psi.qty, 0) * (abs(ps.to_case_no - ps.from_case_no) + 1))
+		res = frappe.db.sql("""select item_code, sum(qty) as qty,
+			(select sum(psi.qty * (abs(ps.to_case_no - ps.from_case_no) + 1))
 				from `tabPacking Slip` ps, `tabPacking Slip Item` psi
 				where ps.name = psi.parent and ps.docstatus = 1
 				and ps.delivery_note = dni.parent and psi.item_code=dni.item_code) as packed_qty,
-			stock_uom, item_name
+			stock_uom, item_name, description, dni.batch_no {custom_fields}
 			from `tabDelivery Note Item` dni
-			where parent=%s %s
-			group by item_code""" % ("%s", condition),
+			where parent=%s {condition}
+			group by item_code""".format(condition=condition, custom_fields=custom_fields),
 			tuple([self.delivery_note] + rows), as_dict=1)
 
-		ps_item_qty = dict([[d.item_code, d.qty] for d in self.get("item_details")])
+		ps_item_qty = dict([[d.item_code, d.qty] for d in self.get("items")])
 		no_of_cases = cint(self.to_case_no) - cint(self.from_case_no) + 1
 
 		return res, ps_item_qty, no_of_cases
@@ -127,7 +132,7 @@ class PackingSlip(Document):
 		if not self.from_case_no:
 			self.from_case_no = self.get_recommended_case_no()
 
-		for d in self.get("item_details"):
+		for d in self.get("items"):
 			res = frappe.db.get_value("Item", d.item_code,
 				["net_weight", "weight_uom"], as_dict=True)
 
@@ -146,16 +151,26 @@ class PackingSlip(Document):
 		return cint(recommended_case_no[0][0]) + 1
 
 	def get_items(self):
-		self.set("item_details", [])
+		self.set("items", [])
+
+		custom_fields = frappe.get_meta("Delivery Note Item").get_custom_fields()
 
 		dn_details = self.get_details_for_packing()[0]
 		for item in dn_details:
 			if flt(item.qty) > flt(item.packed_qty):
-				ch = self.append('item_details', {})
+				ch = self.append('items', {})
 				ch.item_code = item.item_code
 				ch.item_name = item.item_name
 				ch.stock_uom = item.stock_uom
+				ch.description = item.description
+				ch.batch_no = item.batch_no
 				ch.qty = flt(item.qty) - flt(item.packed_qty)
+
+				# copy custom fields
+				for d in custom_fields:
+					if item.get(d.fieldname):
+						ch.set(d.fieldname, item.get(d.fieldname))
+
 		self.update_item_details()
 
 def item_details(doctype, txt, searchfield, start, page_len, filters):

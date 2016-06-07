@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -32,6 +32,9 @@ def validate_filters(filters):
 		if not filters.get(f.lower().replace(" ", "_")):
 			frappe.throw(_("{0} is mandatory").format(f))
 
+	if not frappe.db.exists("Fiscal Year", filters.get("fiscal_year")):
+		frappe.throw(_("Fiscal Year: {0} does not exists").format(filters.get("fiscal_year")))
+
 	if filters.get("based_on") == filters.get("group_by"):
 		frappe.throw(_("'Based On' and 'Group By' can not be same"))
 
@@ -40,8 +43,15 @@ def get_data(filters, conditions):
 	inc, cond= '',''
 	query_details =  conditions["based_on_select"] + conditions["period_wise_select"]
 
-	if conditions["based_on_select"] in ["t1.project_name,", "t2.project_name,"]:
+	posting_date = 't1.transaction_date'
+	if conditions.get('trans') in ['Sales Invoice', 'Purchase Invoice', 'Purchase Receipt', 'Delivery Note']:
+		posting_date = 't1.posting_date'
+
+	if conditions["based_on_select"] in ["t1.project,", "t2.project,"]:
 		cond = 'and '+ conditions["based_on_select"][:-1] +' IS Not NULL'
+
+	year_start_date, year_end_date = frappe.db.get_value("Fiscal Year",
+		filters.get('fiscal_year'), ["year_start_date", "year_end_date"])
 
 	if filters.get("group_by"):
 		sel_col = ''
@@ -59,12 +69,12 @@ def get_data(filters, conditions):
 		else :
 			inc = 1
 		data1 = frappe.db.sql(""" select %s from `tab%s` t1, `tab%s Item` t2 %s
-					where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s and
+					where t2.parent = t1.name and t1.company = %s and %s between %s and %s and
 					t1.docstatus = 1 %s %s
 					group by %s
 				""" % (query_details,  conditions["trans"],  conditions["trans"], conditions["addl_tables"], "%s",
-					"%s", conditions.get("addl_tables_relational_cond"), cond, conditions["group_by"]), (filters.get("company"),
-					filters["fiscal_year"]),as_list=1)
+					posting_date, "%s", "%s", conditions.get("addl_tables_relational_cond"), cond, conditions["group_by"]), (filters.get("company"),
+					year_start_date, year_end_date),as_list=1)
 
 		for d in range(len(data1)):
 			#to add blanck column
@@ -74,41 +84,42 @@ def get_data(filters, conditions):
 
 			#to get distinct value of col specified by group_by in filter
 			row = frappe.db.sql("""select DISTINCT(%s) from `tab%s` t1, `tab%s Item` t2 %s
-						where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s
+						where t2.parent = t1.name and t1.company = %s and %s between %s and %s
 						and t1.docstatus = 1 and %s = %s %s
 					""" %
 					(sel_col,  conditions["trans"],  conditions["trans"], conditions["addl_tables"],
-						"%s", "%s", conditions["group_by"], "%s", conditions.get("addl_tables_relational_cond")),
-					(filters.get("company"), filters.get("fiscal_year"), data1[d][0]), as_list=1)
+						"%s", posting_date, "%s", "%s", conditions["group_by"], "%s", conditions.get("addl_tables_relational_cond")),
+					(filters.get("company"), year_start_date, year_end_date, data1[d][0]), as_list=1)
 
 			for i in range(len(row)):
 				des = ['' for q in range(len(conditions["columns"]))]
 
 				#get data for group_by filter
 				row1 = frappe.db.sql(""" select %s , %s from `tab%s` t1, `tab%s Item` t2 %s
-							where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s
+							where t2.parent = t1.name and t1.company = %s and %s between %s and %s
 							and t1.docstatus = 1 and %s = %s and %s = %s %s
 						""" %
 						(sel_col, conditions["period_wise_select"], conditions["trans"],
-						 	conditions["trans"], conditions["addl_tables"], "%s", "%s", sel_col,
+							conditions["trans"], conditions["addl_tables"], "%s", posting_date, "%s","%s", sel_col,
 							"%s", conditions["group_by"], "%s", conditions.get("addl_tables_relational_cond")),
-						(filters.get("company"), filters.get("fiscal_year"), row[i][0],
+						(filters.get("company"), year_start_date, year_end_date, row[i][0],
 							data1[d][0]), as_list=1)
 
-				des[ind] = row[i]
+				des[ind] = row[i][0]
+
 				for j in range(1,len(conditions["columns"])-inc):
 					des[j+inc] = row1[0][j]
 
 				data.append(des)
 	else:
 		data = frappe.db.sql(""" select %s from `tab%s` t1, `tab%s Item` t2 %s
-					where t2.parent = t1.name and t1.company = %s and t1.fiscal_year = %s and
+					where t2.parent = t1.name and t1.company = %s and %s between %s and %s and
 					t1.docstatus = 1 %s %s
 					group by %s
 				""" %
 				(query_details, conditions["trans"], conditions["trans"], conditions["addl_tables"],
-					"%s", "%s", cond, conditions.get("addl_tables_relational_cond", ""), conditions["group_by"]),
-				(filters.get("company"), filters.get("fiscal_year")), as_list=1)
+					"%s", posting_date, "%s", "%s", cond, conditions.get("addl_tables_relational_cond", ""), conditions["group_by"]),
+				(filters.get("company"), year_start_date, year_end_date), as_list=1)
 
 	return data
 
@@ -132,9 +143,9 @@ def period_wise_columns_query(filters, trans):
 	else:
 		pwc = [_(filters.get("fiscal_year")) + " ("+_("Qty") + "):Float:120",
 			_(filters.get("fiscal_year")) + " ("+ _("Amt") + "):Currency:120"]
-		query_details = " SUM(t2.qty), SUM(t2.base_amount),"
+		query_details = " SUM(t2.qty), SUM(t2.base_net_amount),"
 
-	query_details += 'SUM(t2.qty), SUM(t2.base_amount)'
+	query_details += 'SUM(t2.qty), SUM(t2.base_net_amount)'
 	return pwc, query_details
 
 def get_period_wise_columns(bet_dates, period, pwc):
@@ -147,7 +158,7 @@ def get_period_wise_columns(bet_dates, period, pwc):
 
 def get_period_wise_query(bet_dates, trans_date, query_details):
 	query_details += """SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t2.qty, NULL)),
-					SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t2.base_amount, NULL)),
+					SUM(IF(t1.%(trans_date)s BETWEEN '%(sd)s' AND '%(ed)s', t2.base_net_amount, NULL)),
 				""" % {"trans_date": trans_date, "sd": bet_dates[0],"ed": bet_dates[1]}
 	return query_details
 
@@ -210,7 +221,7 @@ def based_wise_columns_query(based_on, trans):
 	elif based_on == "Customer":
 		based_on_details["based_on_cols"] = ["Customer:Link/Customer:120", "Territory:Link/Territory:120"]
 		based_on_details["based_on_select"] = "t1.customer_name, t1.territory, "
-		based_on_details["based_on_group_by"] = 't1.customer_name'
+		based_on_details["based_on_group_by"] = 't1.customer'
 		based_on_details["addl_tables"] = ''
 
 	elif based_on == "Customer Group":
@@ -242,13 +253,13 @@ def based_wise_columns_query(based_on, trans):
 	elif based_on == "Project":
 		if trans in ['Sales Invoice', 'Delivery Note', 'Sales Order']:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
-			based_on_details["based_on_select"] = "t1.project_name,"
-			based_on_details["based_on_group_by"] = 't1.project_name'
+			based_on_details["based_on_select"] = "t1.project,"
+			based_on_details["based_on_group_by"] = 't1.project'
 			based_on_details["addl_tables"] = ''
 		elif trans in ['Purchase Order', 'Purchase Invoice', 'Purchase Receipt']:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
-			based_on_details["based_on_select"] = "t2.project_name,"
-			based_on_details["based_on_group_by"] = 't2.project_name'
+			based_on_details["based_on_select"] = "t2.project,"
+			based_on_details["based_on_group_by"] = 't2.project'
 			based_on_details["addl_tables"] = ''
 		else:
 			frappe.throw(_("Project-wise data is not available for Quotation"))

@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 frappe.query_reports["Monthly Salary Register"] = {
@@ -29,7 +29,7 @@ frappe.query_reports["Monthly Salary Register"] = {
 			"label": __("Company"),
 			"fieldtype": "Link",
 			"options": "Company",
-			"default": frappe.defaults.get_user_default("company")
+			"default": frappe.defaults.get_user_default("Company")
 		}
 	]
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 cur_frm.list_route = "Sales Browser/Sales Person";
@@ -24,12 +24,6 @@ cur_frm.fields_dict['parent_sales_person'].get_query = function(doc, cdt, cdn) {
 			['Sales Person', 'is_group', '=', 'Yes'],
 			['Sales Person', 'name', '!=', doc.sales_person_name]
 		]
-	}
-}
-
-cur_frm.fields_dict['target_details'].grid.get_field("item_group").get_query = function(doc, cdt, cdn) {
-	return {
-		filters: { 'is_group': "No" }
 	}
 }
 

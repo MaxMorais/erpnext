@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 
@@ -15,27 +15,39 @@ class TestLandedCostVoucher(unittest.TestCase):
 		pr = frappe.copy_doc(pr_test_records[0])
 		pr.submit()
 
-		bin_details = frappe.db.get_value("Bin", {"warehouse": "_Test Warehouse - _TC",
-			"item_code": "_Test Item"},	["actual_qty", "stock_value"], as_dict=1)
+		last_sle = frappe.db.get_value("Stock Ledger Entry", {
+				"voucher_type": pr.doctype,
+				"voucher_no": pr.name,
+				"item_code": "_Test Item",
+				"warehouse": "_Test Warehouse - _TC"
+			},
+			fieldname=["qty_after_transaction", "stock_value"],
+			as_dict=1)
 
 		self.submit_landed_cost_voucher(pr)
 
 		pr_lc_value = frappe.db.get_value("Purchase Receipt Item", {"parent": pr.name}, "landed_cost_voucher_amount")
 		self.assertEquals(pr_lc_value, 25.0)
 
-		bin_details_after_lcv = frappe.db.get_value("Bin", {"warehouse": "_Test Warehouse - _TC",
-			"item_code": "_Test Item"},	["actual_qty", "stock_value"], as_dict=1)
+		last_sle_after_landed_cost = frappe.db.get_value("Stock Ledger Entry", {
+				"voucher_type": pr.doctype,
+				"voucher_no": pr.name,
+				"item_code": "_Test Item",
+				"warehouse": "_Test Warehouse - _TC"
+			},
+			fieldname=["qty_after_transaction", "stock_value"],
+			as_dict=1)
 
-		self.assertEqual(bin_details.actual_qty, bin_details_after_lcv.actual_qty)
+		self.assertEqual(last_sle.qty_after_transaction, last_sle_after_landed_cost.qty_after_transaction)
 
-		self.assertEqual(bin_details_after_lcv.stock_value - bin_details.stock_value, 25.0)
+		self.assertEqual(last_sle_after_landed_cost.stock_value - last_sle.stock_value, 25.0)
 
 		gl_entries = get_gl_entries("Purchase Receipt", pr.name)
 
 		self.assertTrue(gl_entries)
 
-		stock_in_hand_account = pr.get("purchase_receipt_details")[0].warehouse
-		fixed_asset_account = pr.get("purchase_receipt_details")[1].warehouse
+		stock_in_hand_account = pr.get("items")[0].warehouse
+		fixed_asset_account = pr.get("items")[1].warehouse
 
 
 		expected_values = {
@@ -56,8 +68,8 @@ class TestLandedCostVoucher(unittest.TestCase):
 		frappe.db.sql("delete from `tabSerial No` where name in ('SN001', 'SN002', 'SN003', 'SN004', 'SN005')")
 
 		pr = frappe.copy_doc(pr_test_records[0])
-		pr.purchase_receipt_details[0].item_code = "_Test Serialized Item"
-		pr.purchase_receipt_details[0].serial_no = "SN001\nSN002\nSN003\nSN004\nSN005"
+		pr.items[0].item_code = "_Test Serialized Item"
+		pr.items[0].serial_no = "SN001\nSN002\nSN003\nSN004\nSN005"
 		pr.submit()
 
 		serial_no_rate = frappe.db.get_value("Serial No", "SN001", "purchase_rate")
@@ -65,9 +77,8 @@ class TestLandedCostVoucher(unittest.TestCase):
 		self.submit_landed_cost_voucher(pr)
 
 		serial_no = frappe.db.get_value("Serial No", "SN001",
-			["status", "warehouse", "purchase_rate"], as_dict=1)
+			["warehouse", "purchase_rate"], as_dict=1)
 
-		self.assertEquals(serial_no.status, "Available")
 		self.assertEquals(serial_no.purchase_rate - serial_no_rate, 5.0)
 		self.assertEquals(serial_no.warehouse, "_Test Warehouse - _TC")
 
@@ -76,13 +87,13 @@ class TestLandedCostVoucher(unittest.TestCase):
 	def submit_landed_cost_voucher(self, pr):
 		lcv = frappe.new_doc("Landed Cost Voucher")
 		lcv.company = "_Test Company"
-		lcv.set("landed_cost_purchase_receipts", [{
+		lcv.set("purchase_receipts", [{
 			"purchase_receipt": pr.name,
 			"supplier": pr.supplier,
 			"posting_date": pr.posting_date,
-			"grand_total": pr.grand_total
+			"grand_total": pr.base_grand_total
 		}])
-		lcv.set("landed_cost_taxes_and_charges", [{
+		lcv.set("taxes", [{
 			"description": "Insurance Charges",
 			"account": "_Test Account Insurance Charges - _TC",
 			"amount": 50.0

@@ -1,37 +1,41 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import getdate, validate_email_add, cint
+from frappe.utils import getdate, validate_email_add, today
 from frappe.model.naming import make_autoname
-from frappe import throw, _, msgprint
+from frappe import throw, _
 import frappe.permissions
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
+from erpnext.utilities.transaction_base import delete_events
 
-class EmployeeUserDisabledError(frappe.ValidationError): pass
+
+class EmployeeUserDisabledError(frappe.ValidationError):
+	pass
+
 
 class Employee(Document):
 	def onload(self):
 		self.get("__onload").salary_structure_exists = frappe.db.get_value("Salary Structure",
-			{"employee": self.name, "is_active": "Yes", "docstatus": ["!=", 2]})
+				{"employee": self.name, "is_active": "Yes", "docstatus": ["!=", 2]})
 
 	def autoname(self):
 		naming_method = frappe.db.get_value("HR Settings", None, "emp_created_by")
 		if not naming_method:
 			throw(_("Please setup Employee Naming System in Human Resource > HR Settings"))
 		else:
-			if naming_method=='Naming Series':
+			if naming_method == 'Naming Series':
 				self.name = make_autoname(self.naming_series + '.####')
-			elif naming_method=='Employee Number':
+			elif naming_method == 'Employee Number':
 				self.name = self.employee_number
 
 		self.employee = self.name
 
 	def validate(self):
-		from erpnext.utilities import validate_status
+		from erpnext.controllers.status_updater import validate_status
 		validate_status(self.status, ["Active", "Left"])
 
 		self.employee = self.name
@@ -39,17 +43,21 @@ class Employee(Document):
 		self.validate_email()
 		self.validate_status()
 		self.validate_employee_leave_approver()
+		self.validate_reports_to()
 
 		if self.user_id:
 			self.validate_for_enabled_user_id()
 			self.validate_duplicate_user_id()
+		else:
+			existing_user_id = frappe.db.get_value("Employee", self.name, "user_id")
+			if existing_user_id:
+				frappe.permissions.remove_user_permission(
+					"Employee", self.name, existing_user_id)
 
 	def on_update(self):
 		if self.user_id:
 			self.update_user()
 			self.update_user_permissions()
-
-		self.update_dob_event()
 
 	def update_user_permissions(self):
 		frappe.permissions.add_user_permission("Employee", self.name, self.user_id)
@@ -58,7 +66,7 @@ class Employee(Document):
 	def update_user(self):
 		# add employee role if missing
 		user = frappe.get_doc("User", self.user_id)
-		user.ignore_permissions = True
+		user.flags.ignore_permissions = True
 
 		if "Employee" not in user.get("user_roles"):
 			user.add_roles("Employee")
@@ -85,7 +93,7 @@ class Employee(Document):
 				user.user_image = self.image
 				try:
 					frappe.get_doc({
-						"doctype": "File Data",
+						"doctype": "File",
 						"file_name": self.image,
 						"attached_to_doctype": "User",
 						"attached_to_name": self.user_id
@@ -97,6 +105,9 @@ class Employee(Document):
 		user.save()
 
 	def validate_date(self):
+		if self.date_of_birth and getdate(self.date_of_birth) > getdate(today()):
+			throw(_("Date of Birth cannot be greater than today."))
+
 		if self.date_of_birth and self.date_of_joining and getdate(self.date_of_birth) >= getdate(self.date_of_joining):
 			throw(_("Date of Joining must be greater than Date of Birth"))
 
@@ -106,14 +117,14 @@ class Employee(Document):
 		elif self.relieving_date and self.date_of_joining and (getdate(self.relieving_date) <= getdate(self.date_of_joining)):
 			throw(_("Relieving Date must be greater than Date of Joining"))
 
-		elif self.contract_end_date and self.date_of_joining and (getdate(self.contract_end_date)<=getdate(self.date_of_joining)):
+		elif self.contract_end_date and self.date_of_joining and (getdate(self.contract_end_date) <= getdate(self.date_of_joining)):
 			throw(_("Contract End Date must be greater than Date of Joining"))
 
 	def validate_email(self):
-		if self.company_email and not validate_email_add(self.company_email):
-			throw(_("Please enter valid Company Email"))
-		if self.personal_email and not validate_email_add(self.personal_email):
-			throw(_("Please enter valid Personal Email"))
+		if self.company_email:
+			validate_email_add(self.company_email, True)
+		if self.personal_email:
+			validate_email_add(self.personal_email, True)
 
 	def validate_status(self):
 		if self.status == 'Left' and not self.relieving_date:
@@ -125,63 +136,43 @@ class Employee(Document):
 		enabled = frappe.db.sql("""select name from `tabUser` where
 			name=%s and enabled=1""", self.user_id)
 		if not enabled:
-			throw(_("User {0} is disabled").format(self.user_id), EmployeeUserDisabledError)
+			throw(_("User {0} is disabled").format(
+				self.user_id), EmployeeUserDisabledError)
 
 	def validate_duplicate_user_id(self):
 		employee = frappe.db.sql_list("""select name from `tabEmployee` where
 			user_id=%s and status='Active' and name!=%s""", (self.user_id, self.name))
 		if employee:
-			throw(_("User {0} is already assigned to Employee {1}").format(self.user_id, employee[0]))
+			throw(_("User {0} is already assigned to Employee {1}").format(
+				self.user_id, employee[0]), frappe.DuplicateEntryError)
 
 	def validate_employee_leave_approver(self):
-		from erpnext.hr.doctype.leave_application.leave_application import InvalidLeaveApproverError
-
-		for l in self.get("employee_leave_approvers")[:]:
+		for l in self.get("leave_approvers")[:]:
 			if "Leave Approver" not in frappe.get_roles(l.leave_approver):
-				self.get("employee_leave_approvers").remove(l)
-				msgprint(_("{0} is not a valid Leave Approver. Removing row #{1}.").format(l.leave_approver, l.idx))
+				frappe.get_doc("User", l.leave_approver).add_roles("Leave Approver")
 
-	def update_dob_event(self):
-		if self.status == "Active" and self.date_of_birth \
-			and not cint(frappe.db.get_value("HR Settings", None, "stop_birthday_reminders")):
-			birthday_event = frappe.db.sql("""select name from `tabEvent` where repeat_on='Every Year'
-				and ref_type='Employee' and ref_name=%s""", self.name)
+	def validate_reports_to(self):
+		if self.reports_to == self.name:
+			throw(_("Employee cannot report to himself."))
 
-			starts_on = self.date_of_birth + " 00:00:00"
-			ends_on = self.date_of_birth + " 00:15:00"
+	def on_trash(self):
+		delete_events(self.doctype, self.name)
 
-			if birthday_event:
-				event = frappe.get_doc("Event", birthday_event[0][0])
-				event.starts_on = starts_on
-				event.ends_on = ends_on
-				event.save()
-			else:
-				frappe.get_doc({
-					"doctype": "Event",
-					"subject": _("Birthday") + ": " + self.employee_name,
-					"description": _("Happy Birthday!") + " " + self.employee_name,
-					"starts_on": starts_on,
-					"ends_on": ends_on,
-					"event_type": "Public",
-					"all_day": 1,
-					"send_reminder": 1,
-					"repeat_this_event": 1,
-					"repeat_on": "Every Year",
-					"ref_type": "Employee",
-					"ref_name": self.name
-				}).insert()
-		else:
-			frappe.db.sql("""delete from `tabEvent` where repeat_on='Every Year' and
-				ref_type='Employee' and ref_name=%s""", self.name)
 
 @frappe.whitelist()
 def get_retirement_date(date_of_birth=None):
 	import datetime
 	ret = {}
 	if date_of_birth:
-		dt = getdate(date_of_birth) + datetime.timedelta(21915)
-		ret = {'date_of_retirement': dt.strftime('%Y-%m-%d')}
+		try:
+			dt = getdate(date_of_birth) + datetime.timedelta(21915)
+			ret = {'date_of_retirement': dt.strftime('%Y-%m-%d')}
+		except ValueError:
+			# invalid date
+			ret = {}
+
 	return ret
+
 
 @frappe.whitelist()
 def make_salary_structure(source_name, target=None):
@@ -189,7 +180,7 @@ def make_salary_structure(source_name, target=None):
 		"Employee": {
 			"doctype": "Salary Structure",
 			"field_map": {
-				"name": "employee"
+				"name": "employee",
 			}
 		}
 	})
@@ -208,3 +199,43 @@ def update_user_permissions(doc, method):
 	if "Employee" in [d.role for d in doc.get("user_roles")]:
 		employee = frappe.get_doc("Employee", {"user_id": doc.name})
 		employee.update_user_permissions()
+
+def send_birthday_reminders():
+	"""Send Employee birthday reminders if no 'Stop Birthday Reminders' is not set."""
+	if int(frappe.db.get_single_value("HR Settings", "stop_birthday_reminders") or 0):
+		return
+
+	from frappe.utils.user import get_enabled_system_users
+	users = None
+
+	birthdays = get_employees_who_are_born_today()
+
+	if birthdays:
+		if not users:
+			users = [u.email_id or u.name for u in get_enabled_system_users()]
+
+		for e in birthdays:
+			frappe.sendmail(recipients=filter(lambda u: u not in (e.company_email, e.personal_email, e.user_id), users),
+				subject=_("Birthday Reminder for {0}").format(e.employee_name),
+				message=_("""Today is {0}'s birthday!""").format(e.employee_name),
+				reply_to=e.company_email or e.personal_email or e.user_id,
+				bulk=True)
+
+def get_employees_who_are_born_today():
+	"""Get Employee properties whose birthday is today."""
+	return frappe.db.sql("""select name, personal_email, company_email, user_id, employee_name
+		from tabEmployee where day(date_of_birth) = day(%(date)s)
+		and month(date_of_birth) = month(%(date)s)
+		and status = 'Active'""", {"date": today()}, as_dict=True)
+
+def get_holiday_list_for_employee(employee, raise_exception=True):
+	holiday_list, company = frappe.db.get_value("Employee", employee, ["holiday_list", "company"])
+
+	if not holiday_list:
+		holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
+
+	if not holiday_list and raise_exception:
+		frappe.throw(_('Please set a default Holiday List for Employee {0} or Company {0}').format(employee, company))
+
+	return holiday_list
+

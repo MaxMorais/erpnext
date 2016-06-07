@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt"
 
 
@@ -29,8 +29,9 @@ def boot_session(bootinfo):
 			bootinfo.setup_complete = frappe.db.sql("""select name from
 				tabCompany limit 1""") and 'Yes' or 'No'
 
-		bootinfo.docs += frappe.db.sql("""select name, default_currency, cost_center
-            from `tabCompany`""", as_dict=1, update={"doctype":":Company"})
+		bootinfo.docs += frappe.db.sql("""select name, default_currency, cost_center,
+			default_terms, default_letter_head from `tabCompany`""",
+			as_dict=1, update={"doctype":":Company"})
 
 def load_country_and_currency(bootinfo):
 	country = frappe.db.get_default("country")
@@ -38,12 +39,12 @@ def load_country_and_currency(bootinfo):
 		bootinfo.docs += [frappe.get_doc("Country", country)]
 
 	bootinfo.docs += frappe.db.sql("""select * from tabCurrency
-		where ifnull(enabled,0)=1""", as_dict=1, update={"doctype":":Currency"})
+		where enabled=1""", as_dict=1, update={"doctype":":Currency"})
 
 def get_letter_heads():
 	import frappe
 	ret = frappe.db.sql("""select name, content from `tabLetter Head`
-		where ifnull(disabled,0)=0""")
+		where disabled=0""")
 	return dict(ret)
 
 def update_page_info(bootinfo):

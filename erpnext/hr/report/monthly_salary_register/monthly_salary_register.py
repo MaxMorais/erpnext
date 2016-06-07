@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
@@ -43,11 +43,11 @@ def get_columns(salary_slips):
 	]
 	
 	earning_types = frappe.db.sql_list("""select distinct e_type from `tabSalary Slip Earning`
-		where ifnull(e_modified_amount, 0) != 0 and parent in (%s)""" % 
+		where e_modified_amount != 0 and parent in (%s)""" % 
 		(', '.join(['%s']*len(salary_slips))), tuple([d.name for d in salary_slips]))
 		
 	ded_types = frappe.db.sql_list("""select distinct d_type from `tabSalary Slip Deduction`
-		where ifnull(d_modified_amount, 0) != 0 and parent in (%s)""" % 
+		where d_modified_amount != 0 and parent in (%s)""" % 
 		(', '.join(['%s']*len(salary_slips))), tuple([d.name for d in salary_slips]))
 		
 	columns = columns + [(e + ":Currency:120") for e in earning_types] + \

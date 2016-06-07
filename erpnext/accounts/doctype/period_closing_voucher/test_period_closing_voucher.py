@@ -1,47 +1,84 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 
 from __future__ import unicode_literals
 import unittest
 import frappe
-from erpnext.accounts.doctype.journal_voucher.test_journal_voucher import test_records as jv_records
+from frappe.utils import flt, today
+from erpnext.accounts.utils import get_fiscal_year
+from erpnext.accounts.doctype.journal_entry.test_journal_entry import make_journal_entry
 
 class TestPeriodClosingVoucher(unittest.TestCase):
 	def test_closing_entry(self):
-		# clear GL Entries
-		frappe.db.sql("""delete from `tabGL Entry`""")
-		jv = frappe.copy_doc(jv_records[2])
-		jv.insert()
-		jv.submit()
+		year_start_date = get_fiscal_year(today())[1]
 
-		jv1 = frappe.copy_doc(jv_records[0])
-		jv1.get("entries")[1].account = "_Test Account Cost for Goods Sold - _TC"
-		jv1.get("entries")[1].cost_center = "_Test Cost Center - _TC"
-		jv1.get("entries")[1].debit = 600.0
-		jv1.get("entries")[0].credit = 600.0
-		jv1.insert()
-		jv1.submit()
+		make_journal_entry("_Test Bank - _TC", "Sales - _TC", 400,
+			"_Test Cost Center - _TC", submit=True)
 
-		pcv = frappe.copy_doc(test_records[0])
+		make_journal_entry("_Test Account Cost for Goods Sold - _TC",
+			"_Test Bank - _TC", 600, "_Test Cost Center - _TC", submit=True)
+
+		random_expense_account = frappe.db.sql("""
+			select t1.account,
+				sum(t1.debit) - sum(t1.credit) as balance,
+				sum(t1.debit_in_account_currency) - sum(t1.credit_in_account_currency) \
+					as balance_in_account_currency
+			from `tabGL Entry` t1, `tabAccount` t2
+			where t1.account = t2.name and t2.root_type = 'Expense'
+				and t2.docstatus < 2 and t2.company = '_Test Company'
+				and t1.posting_date between %s and %s
+			group by t1.account
+			having sum(t1.debit) > sum(t1.credit)
+			limit 1""", (year_start_date, today()), as_dict=True)
+
+		profit_or_loss = frappe.db.sql("""select sum(t1.debit) - sum(t1.credit) as balance
+			from `tabGL Entry` t1, `tabAccount` t2
+			where t1.account = t2.name and t2.report_type = 'Profit and Loss'
+			and t2.docstatus < 2 and t2.company = '_Test Company'
+			and t1.posting_date between %s and %s""", (year_start_date, today()))
+
+		profit_or_loss = flt(profit_or_loss[0][0]) if profit_or_loss else 0
+
+		pcv = self.make_period_closing_voucher()
+
+		# Check value for closing account
+		gle_amount_for_closing_account = frappe.db.sql("""select debit - credit
+			from `tabGL Entry` where voucher_type='Period Closing Voucher' and voucher_no=%s
+			and account = '_Test Account Reserves and Surplus - _TC'""", pcv.name)
+
+		gle_amount_for_closing_account = flt(gle_amount_for_closing_account[0][0]) \
+			if gle_amount_for_closing_account else 0
+
+		self.assertEqual(gle_amount_for_closing_account, profit_or_loss)
+
+		if random_expense_account:
+			# Check posted value for teh above random_expense_account
+			gle_for_random_expense_account = frappe.db.sql("""
+				select debit - credit as amount,
+					debit_in_account_currency - credit_in_account_currency
+						as amount_in_account_currency
+				from `tabGL Entry`
+				where voucher_type='Period Closing Voucher' and voucher_no=%s and account =%s""",
+				(pcv.name, random_expense_account[0].account), as_dict=True)
+
+			self.assertEqual(gle_for_random_expense_account[0].amount, -1*random_expense_account[0].balance)
+			self.assertEqual(gle_for_random_expense_account[0].amount_in_account_currency,
+				-1*random_expense_account[0].balance_in_account_currency)
+
+	def make_period_closing_voucher(self):
+		pcv = frappe.get_doc({
+			"doctype": "Period Closing Voucher",
+			"closing_account_head": "_Test Account Reserves and Surplus - _TC",
+			"company": "_Test Company",
+			"fiscal_year": get_fiscal_year(today())[0],
+			"posting_date": today(),
+			"remarks": "test"
+		})
 		pcv.insert()
 		pcv.submit()
 
-		gl_entries = frappe.db.sql("""select account, debit, credit
-			from `tabGL Entry` where voucher_type='Period Closing Voucher' and voucher_no=%s
-			order by account asc, debit asc""", pcv.name, as_dict=1)
-
-		self.assertTrue(gl_entries)
-
-		expected_gl_entries = sorted([
-			["_Test Account Reserves and Surplus - _TC", 200.0, 0.0],
-			["_Test Account Cost for Goods Sold - _TC", 0.0, 600.0],
-			["Sales - _TC", 400.0, 0.0]
-		])
-		for i, gle in enumerate(gl_entries):
-			self.assertEquals(expected_gl_entries[i][0], gle.account)
-			self.assertEquals(expected_gl_entries[i][1], gle.debit)
-			self.assertEquals(expected_gl_entries[i][2], gle.credit)
+		return pcv
 
 
 test_dependencies = ["Customer", "Cost Center"]

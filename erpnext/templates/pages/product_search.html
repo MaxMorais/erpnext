@@ -1,12 +1,18 @@
+{% extends "templates/web.html" %}
+
 {% block title %} {{ "Product Search" }} {% endblock %}
 
 {% block header %}<h2>Product Search</h2>{% endblock %}
 
-{% block content %}
+{% block header_actions %}
+{% include 'templates/includes/product_search_box.html' %}
+{% endblock %}
+
+{% block page_content %}
 <script>{% include "templates/includes/product_list.js" %}</script>
 
 <script>
-$(document).ready(function() {
+frappe.ready(function() {
 	var txt = get_url_arg("q");
 	$(".search-results").html("Search results for: " + txt);
 	window.search = txt;
@@ -15,7 +21,6 @@ $(document).ready(function() {
 });
 </script>
 
-{% include "templates/includes/product_search_box.html" %}
 <div class="product-search-content">
 	<h3 class="search-results">Search Results</h3>
 	<div id="search-list" class="row">
@@ -29,5 +34,3 @@ $(document).ready(function() {
 	</div>
 </div>
 {% endblock %}
-
-{% block sidebar %}{% include "templates/includes/sidebar.html" %}{% endblock %}

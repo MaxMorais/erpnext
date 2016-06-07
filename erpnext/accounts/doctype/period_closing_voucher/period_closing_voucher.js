@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
 
@@ -10,12 +10,12 @@ cur_frm.cscript.onload = function(doc, cdt, cdn) {
 
 // ***************** Get Account Head *****************
 cur_frm.fields_dict['closing_account_head'].get_query = function(doc, cdt, cdn) {
-	return{
-		filters:{
-			"company": doc.company,
-			"report_type": "Balance Sheet",
-			"freeze_account": "No",
-			"group_or_ledger": "Ledger"
-		}
-	}	
+	return {
+		filters: [
+			['Account', 'company', '=', doc.company],
+			['Account', 'is_group', '=', '0'],
+			['Account', 'freeze_account', '=', 'No'],
+			['Account', 'root_type', 'in', 'Liability, Equity']
+		]
+	}
 }

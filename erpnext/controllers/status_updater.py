@@ -1,55 +1,67 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, comma_or
 from frappe import msgprint, _, throw
 from frappe.model.document import Document
 
+def validate_status(status, options):
+	if status not in options:
+		frappe.throw(_("Status must be one of {0}").format(comma_or(options)))
+
 status_map = {
-	"Contact": [
-		["Replied", "communication_sent"],
-		["Open", "communication_received"]
-	],
-	"Job Applicant": [
-		["Replied", "communication_sent"],
-		["Open", "communication_received"]
-	],
 	"Lead": [
-		["Replied", "communication_sent"],
 		["Converted", "has_customer"],
 		["Opportunity", "has_opportunity"],
-		["Open", "communication_received"],
 	],
 	"Opportunity": [
-		["Draft", None],
-		["Submitted", "eval:self.docstatus==1"],
 		["Lost", "eval:self.status=='Lost'"],
 		["Quotation", "has_quotation"],
-		["Replied", "communication_sent"],
-		["Cancelled", "eval:self.docstatus==2"],
-		["Open", "communication_received"],
+		["Converted", "has_ordered_quotation"]
 	],
 	"Quotation": [
 		["Draft", None],
 		["Submitted", "eval:self.docstatus==1"],
 		["Lost", "eval:self.status=='Lost'"],
 		["Ordered", "has_sales_order"],
-		["Replied", "communication_sent"],
 		["Cancelled", "eval:self.docstatus==2"],
-		["Open", "communication_received"],
 	],
 	"Sales Order": [
 		["Draft", None],
-		["Submitted", "eval:self.docstatus==1"],
-		["Stopped", "eval:self.status=='Stopped'"],
+		["To Deliver and Bill", "eval:self.per_delivered < 100 and self.per_billed < 100 and self.docstatus == 1"],
+		["To Bill", "eval:self.per_delivered == 100 and self.per_billed < 100 and self.docstatus == 1"],
+		["To Deliver", "eval:self.per_delivered < 100 and self.per_billed == 100 and self.docstatus == 1"],
+		["Completed", "eval:self.per_delivered == 100 and self.per_billed == 100 and self.docstatus == 1"],
+		["Completed", "eval:self.order_type == 'Maintenance' and self.per_billed == 100 and self.docstatus == 1"],
 		["Cancelled", "eval:self.docstatus==2"],
+		["Closed", "eval:self.status=='Closed'"],
 	],
-	"Support Ticket": [
-		["Replied", "communication_sent"],
-		["Open", "communication_received"]
+	"Purchase Order": [
+		["Draft", None],
+		["To Receive and Bill", "eval:self.per_received < 100 and self.per_billed < 100 and self.docstatus == 1"],
+		["To Bill", "eval:self.per_received == 100 and self.per_billed < 100 and self.docstatus == 1"],
+		["To Receive", "eval:self.per_received < 100 and self.per_billed == 100 and self.docstatus == 1"],
+		["Completed", "eval:self.per_received == 100 and self.per_billed == 100 and self.docstatus == 1"],
+		["Delivered", "eval:self.status=='Delivered'"],
+		["Cancelled", "eval:self.docstatus==2"],
+		["Closed", "eval:self.status=='Closed'"],
 	],
+	"Delivery Note": [
+		["Draft", None],
+		["To Bill", "eval:self.per_billed < 100 and self.docstatus == 1"],
+		["Completed", "eval:self.per_billed == 100 and self.docstatus == 1"],
+		["Cancelled", "eval:self.docstatus==2"],
+		["Closed", "eval:self.status=='Closed'"],
+	],
+	"Purchase Receipt": [
+		["Draft", None],
+		["To Bill", "eval:self.per_billed < 100 and self.docstatus == 1"],
+		["Completed", "eval:self.per_billed == 100 and self.docstatus == 1"],
+		["Cancelled", "eval:self.docstatus==2"],
+		["Closed", "eval:self.status=='Closed'"],
+	]
 }
 
 class StatusUpdater(Document):
@@ -64,12 +76,16 @@ class StatusUpdater(Document):
 		self.update_qty()
 		self.validate_qty()
 
-	def set_status(self, update=False):
+	def set_status(self, update=False, status=None, update_modified=True):
 		if self.is_new():
 			return
 
 		if self.doctype in status_map:
 			_status = self.status
+
+			if status and update:
+				self.db_set("status", status)
+
 			sl = status_map[self.doctype][:]
 			sl.reverse()
 			for s in sl:
@@ -84,39 +100,23 @@ class StatusUpdater(Document):
 					self.status = s[0]
 					break
 
-			if self.status != _status:
-				self.add_comment("Label", self.status)
+			if self.status != _status and self.status not in ("Submitted", "Cancelled"):
+				self.add_comment("Label", _(self.status))
 
 			if update:
-				frappe.db.set_value(self.doctype, self.name, "status", self.status)
-
-	def on_communication(self):
-		if not self.get("communications"): return
-		self.communication_set = True
-		self.get("communications").sort(key=lambda d: d.creation)
-		self.set_status(update=True)
-		del self.communication_set
-
-	def communication_received(self):
-		if getattr(self, "communication_set", False):
-			last_comm = self.get("communications")
-			if last_comm:
-				return last_comm[-1].sent_or_received == "Received"
-
-	def communication_sent(self):
-		if getattr(self, "communication_set", False):
-			last_comm = self.get("communications")
-			if last_comm:
-				return last_comm[-1].sent_or_received == "Sent"
+				frappe.db.set_value(self.doctype, self.name, "status", self.status,
+					update_modified=update_modified)
 
 	def validate_qty(self):
-		"""
-			Validates qty at row level
-		"""
+		"""Validates qty at row level"""
 		self.tolerance = {}
 		self.global_tolerance = None
 
 		for args in self.status_updater:
+			if "target_ref_field" not in args:
+				# if target_ref_field is not specified, the programmer does not want to validate qty / amount
+				continue
+
 			# get unique transactions to update
 			for d in self.get_all_children():
 				if d.doctype == args['source_dt'] and d.get(args["join_field"]):
@@ -153,7 +153,6 @@ class StatusUpdater(Document):
 		# check if overflow is within tolerance
 		tolerance, self.tolerance, self.global_tolerance = get_tolerance_for(item['item_code'],
 			self.tolerance, self.global_tolerance)
-
 		overflow_percent = ((item[args['target_field']] - item[args['target_ref_field']]) /
 		 	item[args['target_ref_field']]) * 100
 
@@ -166,9 +165,10 @@ class StatusUpdater(Document):
 			throw(_("{0} must be reduced by {1} or you should increase overflow tolerance")
 				.format(_(item["target_ref_field"].title()), item["reduce_by"]))
 
-	def update_qty(self, change_modified=True):
-		"""
-			Updates qty at row level
+	def update_qty(self, update_modified=True):
+		"""Updates qty or amount at row level
+
+			:param update_modified: If true, updates `modified` and `modified_by` for target parent doc
 		"""
 		for args in self.status_updater:
 			# condition to include current record (if submit or no if cancel)
@@ -177,74 +177,111 @@ class StatusUpdater(Document):
 			else:
 				args['cond'] = ' and parent!="%s"' % self.name.replace('"', '\"')
 
-			args['modified_cond'] = ''
-			if change_modified:
-				args['modified_cond'] = ', modified = now()'
+			self._update_children(args, update_modified)
 
-			# update quantities in child table
-			for d in self.get_all_children():
-				if d.doctype == args['source_dt']:
-					# updates qty in the child table
-					args['detail_id'] = d.get(args['join_field'])
+			if "percent_join_field" in args:
+				self._update_percent_field_in_targets(args, update_modified)
 
-					args['second_source_condition'] = ""
-					if args.get('second_source_dt') and args.get('second_source_field') \
-							and args.get('second_join_field'):
-						args['second_source_condition'] = """ + ifnull((select sum(%(second_source_field)s)
-							from `tab%(second_source_dt)s`
-							where `%(second_join_field)s`="%(detail_id)s"
-							and (docstatus=1)), 0)""" % args
+	def _update_children(self, args, update_modified):
+		"""Update quantities or amount in child table"""
+		for d in self.get_all_children():
+			if d.doctype != args['source_dt']:
+				continue
 
-					if args['detail_id']:
-						frappe.db.sql("""update `tab%(target_dt)s`
-							set %(target_field)s = (select sum(%(source_field)s)
-								from `tab%(source_dt)s` where `%(join_field)s`="%(detail_id)s"
-								and (docstatus=1 %(cond)s)) %(second_source_condition)s
-							where name='%(detail_id)s'""" % args)
+			self._update_modified(args, update_modified)
 
-			# get unique transactions to update
-			for name in set([d.get(args['percent_join_field']) for d in self.get_all_children(args['source_dt'])]):
-				if name:
-					args['name'] = name
+			# updates qty in the child table
+			args['detail_id'] = d.get(args['join_field'])
 
-					# update percent complete in the parent table
-					frappe.db.sql("""update `tab%(target_parent_dt)s`
-						set %(target_parent_field)s = (select sum(if(%(target_ref_field)s >
-							ifnull(%(target_field)s, 0), %(target_field)s,
-							%(target_ref_field)s))/sum(%(target_ref_field)s)*100
-							from `tab%(target_dt)s` where parent="%(name)s") %(modified_cond)s
-						where name='%(name)s'""" % args)
+			args['second_source_condition'] = ""
+			if args.get('second_source_dt') and args.get('second_source_field') \
+					and args.get('second_join_field'):
+				if not args.get("second_source_extra_cond"):
+					args["second_source_extra_cond"] = ""
 
-					# update field
-					if args.get('status_field'):
-						frappe.db.sql("""update `tab%(target_parent_dt)s`
-							set %(status_field)s = if(ifnull(%(target_parent_field)s,0)<0.001,
-								'Not %(keyword)s', if(%(target_parent_field)s>=99.99,
-								'Fully %(keyword)s', 'Partly %(keyword)s'))
-							where name='%(name)s'""" % args)
+				args['second_source_condition'] = """ + ifnull((select sum(%(second_source_field)s)
+					from `tab%(second_source_dt)s`
+					where `%(second_join_field)s`="%(detail_id)s"
+					and (`tab%(second_source_dt)s`.docstatus=1) %(second_source_extra_cond)s), 0) """ % args
 
+			if args['detail_id']:
+				if not args.get("extra_cond"): args["extra_cond"] = ""
+
+				frappe.db.sql("""update `tab%(target_dt)s`
+					set %(target_field)s = (
+						(select ifnull(sum(%(source_field)s), 0)
+							from `tab%(source_dt)s` where `%(join_field)s`="%(detail_id)s"
+							and (docstatus=1 %(cond)s) %(extra_cond)s)
+						%(second_source_condition)s
+					)
+					%(update_modified)s
+					where name='%(detail_id)s'""" % args)
+
+	def _update_percent_field_in_targets(self, args, update_modified=True):
+		"""Update percent field in parent transaction"""
+		distinct_transactions = set([d.get(args['percent_join_field'])
+			for d in self.get_all_children(args['source_dt'])])
+
+		for name in distinct_transactions:
+			if name:
+				args['name'] = name
+				self._update_percent_field(args, update_modified)
+
+	def _update_percent_field(self, args, update_modified=True):
+		"""Update percent field in parent transaction"""
+
+		self._update_modified(args, update_modified)
+
+		if args.get('target_parent_field'):
+			frappe.db.sql("""update `tab%(target_parent_dt)s`
+				set %(target_parent_field)s = round(
+					ifnull((select
+						ifnull(sum(if(%(target_ref_field)s > %(target_field)s, %(target_field)s, %(target_ref_field)s)), 0)
+						/ sum(%(target_ref_field)s) * 100
+					from `tab%(target_dt)s` where parent="%(name)s"), 0), 2)
+					%(update_modified)s
+				where name='%(name)s'""" % args)
+
+		# update field
+		if args.get('status_field'):
+			frappe.db.sql("""update `tab%(target_parent_dt)s`
+				set %(status_field)s = if(%(target_parent_field)s<0.001,
+					'Not %(keyword)s', if(%(target_parent_field)s>=99.99,
+					'Fully %(keyword)s', 'Partly %(keyword)s'))
+				where name='%(name)s'""" % args)
+
+		if update_modified:
+			target = frappe.get_doc(args["target_parent_dt"], args["name"])
+			target.set_status(update=True)
+			target.notify_update()
+
+	def _update_modified(self, args, update_modified):
+		args['update_modified'] = ''
+		if update_modified:
+			args['update_modified'] = ', modified = now(), modified_by = "{0}"'\
+				.format(frappe.db.escape(frappe.session.user))
 
 	def update_billing_status_for_zero_amount_refdoc(self, ref_dt):
 		ref_fieldname = ref_dt.lower().replace(" ", "_")
 		zero_amount_refdoc = []
 		all_zero_amount_refdoc = frappe.db.sql_list("""select name from `tab%s`
-			where docstatus=1 and net_total = 0""" % ref_dt)
+			where docstatus=1 and base_net_total = 0""" % ref_dt)
 
-		for item in self.get("entries"):
+		for item in self.get("items"):
 			if item.get(ref_fieldname) \
 				and item.get(ref_fieldname) in all_zero_amount_refdoc \
 				and item.get(ref_fieldname) not in zero_amount_refdoc:
 					zero_amount_refdoc.append(item.get(ref_fieldname))
 
 		if zero_amount_refdoc:
-			self.update_biling_status(zero_amount_refdoc, ref_dt, ref_fieldname)
+			self.update_billing_status(zero_amount_refdoc, ref_dt, ref_fieldname)
 
-	def update_biling_status(self, zero_amount_refdoc, ref_dt, ref_fieldname):
+	def update_billing_status(self, zero_amount_refdoc, ref_dt, ref_fieldname):
 		for ref_dn in zero_amount_refdoc:
-			ref_doc_qty = flt(frappe.db.sql("""select sum(ifnull(qty, 0)) from `tab%s Item`
+			ref_doc_qty = flt(frappe.db.sql("""select ifnull(sum(qty), 0) from `tab%s Item`
 				where parent=%s""" % (ref_dt, '%s'), (ref_dn))[0][0])
 
-			billed_qty = flt(frappe.db.sql("""select sum(ifnull(qty, 0))
+			billed_qty = flt(frappe.db.sql("""select ifnull(sum(qty), 0)
 				from `tab%s Item` where %s=%s and docstatus=1""" %
 				(self.doctype, ref_fieldname, '%s'), (ref_dn))[0][0])
 

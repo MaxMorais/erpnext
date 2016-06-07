@@ -1,11 +1,11 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 
 def execute():
-	from erpnext.utilities.repost_stock import update_bin_qty, get_indented_qty, get_ordered_qty
+	from erpnext.stock.stock_balance import update_bin_qty, get_indented_qty, get_ordered_qty
 
 	count=0
 	for item_code, warehouse in frappe.db.sql("""select distinct item_code, warehouse from

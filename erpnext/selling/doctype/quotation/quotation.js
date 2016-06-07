@@ -1,16 +1,8 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
-// Module CRM
-// =====================================================================================
-cur_frm.cscript.tname = "Quotation Item";
-cur_frm.cscript.fname = "quotation_details";
-cur_frm.cscript.other_fname = "other_charges";
-cur_frm.cscript.sales_team_fname = "sales_team";
 
 {% include 'selling/sales_common.js' %}
-{% include 'accounts/doctype/sales_taxes_and_charges_master/sales_taxes_and_charges_master.js' %}
-{% include 'accounts/doctype/sales_invoice/pos.js' %}
 
 erpnext.selling.QuotationController = erpnext.selling.SellingController.extend({
 	onload: function(doc, dt, dn) {
@@ -26,43 +18,36 @@ erpnext.selling.QuotationController = erpnext.selling.SellingController.extend({
 		this._super(doc, dt, dn);
 
 		if(doc.docstatus == 1 && doc.status!=='Lost') {
-			cur_frm.add_custom_button(__('Make Sales Order'),
-				cur_frm.cscript['Make Sales Order'], frappe.boot.doctype_icons["Sales Order"]);
+			cur_frm.add_custom_button(__('Sales Order'),
+				cur_frm.cscript['Make Sales Order'], __("Make"));
+
 			if(doc.status!=="Ordered") {
-				cur_frm.add_custom_button(__('Set as Lost'),
-					cur_frm.cscript['Declare Order Lost'], "icon-exclamation", "btn-default");
+				cur_frm.add_custom_button(__('Lost'),
+					cur_frm.cscript['Declare Order Lost'], __("Status"));
 			}
-			cur_frm.appframe.add_button(__('Send SMS'), cur_frm.cscript.send_sms, "icon-mobile-phone");
+
+			cur_frm.page.set_inner_btn_group_as_primary(__("Make"));
 		}
 
 		if (this.frm.doc.docstatus===0) {
-			cur_frm.add_custom_button(__('From Opportunity'),
+			cur_frm.add_custom_button(__('Opportunity'),
 				function() {
 					frappe.model.map_current_doc({
-						method: "erpnext.selling.doctype.opportunity.opportunity.make_quotation",
+						method: "erpnext.crm.doctype.opportunity.opportunity.make_quotation",
 						source_doctype: "Opportunity",
 						get_query_filters: {
-							docstatus: 1,
-							status: "Submitted",
+							status: ["not in", ["Lost", "Closed"]],
 							enquiry_type: cur_frm.doc.order_type,
 							customer: cur_frm.doc.customer || undefined,
 							lead: cur_frm.doc.lead || undefined,
 							company: cur_frm.doc.company
 						}
 					})
-				}, "icon-download", "btn-default");
-		}
-
-		if (!doc.__islocal) {
-			cur_frm.communication_view = new frappe.views.CommunicationList({
-				list: frappe.get_list("Communication", {"parent": doc.name, "parenttype": "Quotation"}),
-				parent: cur_frm.fields_dict.communication_html.wrapper,
-				doc: doc,
-				recipients: doc.contact_email
-			});
+				}, __("Get items from"), "btn-default");
 		}
 
 		this.toggle_reqd_lead_customer();
+
 	},
 
 	quotation_to: function() {
@@ -110,8 +95,12 @@ erpnext.selling.QuotationController = erpnext.selling.SellingController.extend({
 	lead: function() {
 		var me = this;
 		frappe.call({
-			method: "erpnext.selling.doctype.lead.lead.get_lead_details",
-			args: { "lead": this.frm.doc.lead },
+			method: "erpnext.crm.doctype.lead.lead.get_lead_details",
+			args: {
+				'lead': this.frm.doc.lead,
+				'posting_date': this.frm.doc.transaction_date,
+				'company': this.frm.doc.company,
+			},
 			callback: function(r) {
 				if(r.message) {
 					me.frm.updating_party_details = true;
@@ -175,8 +164,12 @@ cur_frm.cscript.on_submit = function(doc, cdt, cdn) {
 		cur_frm.email_doc(frappe.boot.notification_settings.quotation_message);
 }
 
-cur_frm.cscript.send_sms = function() {
-	frappe.require("assets/erpnext/js/sms_manager.js");
-	var sms_man = new SMSManager(cur_frm.doc);
-}
+frappe.ui.form.on("Quotation Item", "items_on_form_rendered", function(frm, cdt, cdn) {
+	// enable tax_amount field if Actual
+})
 
+frappe.ui.form.on("Quotation Item", "stock_balance", function(frm, cdt, cdn) {
+	var d = frappe.model.get_doc(cdt, cdn);
+	frappe.route_options = {"item_code": d.item_code};
+	frappe.set_route("query-report", "Stock Balance");
+})
